@@ -16,9 +16,9 @@ import static jsi3.lib.system.Statics.*;
 
 public class LibJsi3
 {
-	public static final int BUILD = 283;
+	public static final int BUILD = 284;
 
-	public static final long BUILD_TIME = 1311931611002L;
+	public static final long BUILD_TIME = 1311932642342L;
 
 	public static void main( String[] args ) throws Exception
 	{

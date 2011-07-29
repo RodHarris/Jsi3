@@ -1,25 +1,54 @@
 #!/bin/sh
 
-JAVA_ARGS=""
+LIB_DIRS="../lib:$HOME/lib:/usr/local/lib"
 
-CP=$CLASSPATH:jsi3.jar:
+JAVA_ARGS=""
 
 while read dep
 do
-	if [ -n "$dep" ]
-	then
-		if [ ! -f "$dep" ]
+	#echo $dep
+	
+	if [ -z $dep ]
+	then 
+		#echo "skipping blank line"
+		
+		continue
+	fi
+	
+	found=0
+	
+	for lib_dir in $(echo $LIB_DIRS | tr ":" "\n")
+	do
+
+		jar_path=$lib_dir/$dep
+		
+		#echo "checking $jar_path"
+		
+		if [ -f "$jar_path" ]
 		then
-			echo "Error: dependency not found - $dep"
+			found=1
 			
-			exit 1
-		else
-			CP="$dep:$CP"
+			#echo "adding dependency: $jar_path"
+			
+			#CP=$CP:"$jar_path"
+			
+			CP=$CP:`readlink -f "$jar_path"`
+			
+			break
+		#else
+			#echo "skipping dependency: $jar_path"
 		fi
+	done
+	
+	if [ $found -eq 0 ]
+	then
+		echo "Couldn't locate dependency: $dep"
+		
+		exit 1
 	fi
 done < ../lib/dependencies.txt
 
-java $JAVA_ARGS -classpath $CP -Djsi3.dir=`pwd` jsi3.LibJsi3 "$@"
+java $JAVA_ARGS -classpath $CP:jsi3.jar -Djsi3.dir=`pwd` jsi3.LibJsi3 "$@"
 
 exit $?
 
