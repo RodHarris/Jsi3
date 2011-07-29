@@ -1,0 +1,6 @@
+Jsi3 : Jsi3-COPYRIGHT
+JUnit : JUnit-LICENCE.txt
+jmdns : jmdns-LICENCE.txt
+java servlet-api : servlet-api-LICENCE.txt
+apache xmlrpc2 : xmlrpc2-LICENSE.txt
+apache derby : apache-derby-LICENCE.txt

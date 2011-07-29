@@ -1,0 +1,23 @@
+#!/bin/sh
+
+CP=$CLASSPATH:jsi3.jar:
+
+while read dep
+do
+	if [ -n "$dep" ]
+	then
+		if [ ! -f "$dep" ]
+		then
+			echo "Error: dependency not found - $dep"
+			
+			exit 1
+		else
+			CP="$dep:$CP"
+		fi
+	fi
+done < ../lib/dependencies.txt
+
+groovy -classpath $CP tests.gr "$@"
+
+exit $?
+

@@ -1,0 +1,10 @@
+
+jsi3.lib.gui.Statics.set_platform_look_and_feel();
+
+String img_filename = jsi3.lib.gui.JImageSelectionPane.show_input_dialog( null, this.args );
+
+if( img_filename == null ) System.exit( -1 );
+
+println( img_filename );
+
+System.exit( 0 );

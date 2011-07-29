@@ -1,0 +1,25 @@
+#!/bin/sh
+
+JAVA_ARGS=""
+
+CP=$CLASSPATH:jsi3.jar:
+
+while read dep
+do
+	if [ -n "$dep" ]
+	then
+		if [ ! -f "$dep" ]
+		then
+			echo "Error: dependency not found - $dep"
+			
+			exit 1
+		else
+			CP="$dep:$CP"
+		fi
+	fi
+done < ../lib/dependencies.txt
+
+java $JAVA_ARGS -classpath $CP -Djsi3.dir=`pwd` jsi3.LibJsi3 "$@"
+
+exit $?
+

@@ -1,0 +1,239 @@
+package jsi.lib.system;
+
+import java.io.*;
+import java.util.*;
+import java.sql.*;
+
+public class Utils
+{
+	/**
+	loads the file and creates a new template from its contents
+	*/
+	public static Template load_template( String file_name ) throws FileNotFoundException, IOException
+	{
+		String txt = load_text_file( file_name );
+		
+		return new Template( txt );
+	}
+	
+	
+	/**
+	maps the objects members to the given template ( but doesn't markup the template automatically)
+	*/
+	public static void map_object( Object o, Template t )
+	{
+		if( o == null )
+		{
+			cerr.println( "mapping null object" );
+			
+			Thread.dumpStack();
+		}
+		
+		HashMap<String, String> map = get_state( o );
+		
+		for( String k : map.keySet() )
+		{
+			t.map( k, map.get( k ) );
+		}
+	}
+	
+	
+	/**
+	fully loads the file given and returns its contents as a string
+	*/
+	public static String load_text_file( String file_name ) throws FileNotFoundException, IOException
+	{
+		File file = file( file_name );
+		
+		byte[] data = load_file( file );
+		
+		String txt = new String( data );
+		
+		return txt;
+	}
+	
+	
+	/**
+	splits the text on new line characters and applies the filter to each line
+	*/
+	public static String filter_lines( String txt, LineFilter filter )
+	{
+		EString ret = new EString();
+		
+		for( String s : txt.split( "\\n" ) )
+		{
+			if( filter.accept( s ) )
+			{
+				ret.println( s );
+			}
+		}
+		
+		return ret.toString();
+	}
+	
+	
+	/**
+	loads the file and removes lines commented with the # symbol
+	*/
+	public static String load_config_file( String file_name ) throws FileNotFoundException, IOException
+	{
+		String txt = load_text_file( file_name );
+		
+		return filter_lines( txt, new ConfigLineFilter() );
+	}
+	
+	
+	/**
+	splits the text on new line characters then parses the lines for [ key=value ] pairs and places them in the hashmap to return
+	*/
+	public static HashMap<String, String> map_values( String txt )
+	{
+		HashMap<String, String> map = new HashMap<String, String>();
+		
+		for( String line : txt.split( "\\n" ) )
+		{
+			if( line.indexOf( "=" ) == -1 ) continue;
+			
+			String[] var_val = line.split( "=", 2 );
+			
+			if( var_val.length != 2 )
+			{
+				cwarn.println( "splitting a '<var> = <val>' string on the '=' character has not resulted in 2 tokens" );
+				
+				continue;
+			}
+			
+			String var = var_val[ 0 ].trim();
+			
+			if( var.length() == 0 )
+			{
+				cwarn.println( "splitting a '<var> = <val>' string on the '=' character has resulted in a null <var>" );
+				
+				continue;
+			}
+			
+			String val = var_val[ 1 ].trim();
+			
+			map.put( var, val );
+		}
+		
+		return map;
+	}
+	
+	
+	/**
+	Loads an ini or conf file, filters commented lines, parses it for [ member = value ] pairs and stores the result in the objects members of the same name
+	*/
+	public static void load_config( String file_name, Object o ) throws FileNotFoundException, IOException
+	{
+		String txt = load_config_file( file_name );
+		
+		HashMap<String, String> map = map_values( txt );
+		
+		LibSys.set_state( o, map );
+	}
+	
+	
+	/**
+	sets the objects members to the correspondingly named values in the result set
+	*/
+	public static void set_state( ResultSet rs, Object o )  throws SQLException
+	{
+		LibSys.not_implemented();
+		
+		HashMap<String, Object> map = new HashMap<String, Object>();
+		
+		ResultSetMetaData rsmd = rs.getMetaData();
+		
+		int nc = rsmd.getColumnCount();
+		
+		for( int i=0; i<nc; i++ )
+		{
+			map.put( rsmd.getColumnName( i ), rs.getObject( i ) );
+		}
+		
+		//LibSys.set_state( o, map );
+		
+		
+	}
+	
+	
+	
+	// --------------------------------------------------    SQL
+	
+	
+	public static void generate_class_from_SQL_table( String table_name, String class_name ) throws SQLException
+	{
+		LibSys.not_implemented();
+		
+		ResultSet rs = execute_query( null, "select * from %s", table_name );
+		
+		// 		String class_name = table_name;
+		
+		// 		if( class_name.endsWith( "ies" ) ) class_name = class_name.substring( 0, class_name.length() - 3 ) + "y";
+		
+		// 		if( class_name.endsWith( "s" ) class_name = class_name.substring
+		
+		
+		EString es = new EString();
+		
+		es.println( "public class %s", class_name );
+		es.println( "{" );
+		es.println( "\t" );
+		
+		ResultSetMetaData rsmd = rs.getMetaData();
+		
+		int nc = rsmd.getColumnCount();
+		
+		for( int i=0; i<nc; i++ )
+		{
+			es.println( "\tpublic %s %s;", rsmd.getColumnClassName( i ), rsmd.getColumnName( i ) );
+		}
+		
+		es.println( "}" );
+		
+		
+		System.out.println( es );
+	}
+	
+	
+	public static void save_object_as_xml( File xml_file, Object o )
+	{
+		LibSys.not_implemented();
+	}
+	
+	
+	public static void use_driver( String driver_class ) throws ClassNotFoundException
+	{
+		Class.forName( driver_class );
+	}
+	
+	
+	public static Connection connect( String url, String user, String passwd ) throws SQLException
+	{
+		return DriverManager.getConnection( url, user, passwd );
+	}
+	
+	
+	public static ResultSet execute_query( Connection dbcon, String query_fmt, Object... args ) throws SQLException
+	{
+		Statement stmt = dbcon.createStatement();
+		
+		return stmt.executeQuery( String.format( query_fmt, args ) );
+	}
+	
+	
+/*	
+	public static NetAddr get_netaddr( String hostname )
+	{
+		NetAddr net_addr = new NetAddr( hostname );
+		
+		if( ! "127.0.0.1".equals( net_addr.dotted_quads ) ) return net_addr;
+		
+		String unqual_hostname = left_of_first( hostname, "." );
+		
+		if( ! is_void( unqual_hostname ) ) hostname = unqual_hostname;
+		
+		net_addr = new NetAddr( hostname );
+	}*/
+}

@@ -1,0 +1,262 @@
+#!/bin/sh
+
+PROJECT="Jsi3"
+
+MAIN_CLASS="LibJsi3"
+
+EXE_NAME="jsi3"
+
+JAR_NAME="jsi3.jar"
+
+PKG_NAME="jsi3"
+
+PKG_DIR="jsi3"
+
+APPDIR=`pwd`
+
+IDIR="$HOME"
+
+ILIB="$IDIR/lib"
+
+
+usage()
+{
+    echo "Usage: $0 {compile|doc|clean}"
+    exit 1
+}
+
+
+if [ $# -gt 0 ]
+then
+	ACTION=$1
+	shift
+	ARGS="$*"
+
+else
+	usage
+fi
+
+
+clean()
+{
+	echo "Cleaning project directory"
+
+	rm -rvf javadoc/*
+
+	rm -rvf lib/class/*
+
+	rm -vf bin/$JAR_NAME
+}
+
+
+clean_last()
+{
+	echo "Removing old files"
+
+	rm -rf lib/class/*
+
+	rm -f bin/$JAR_NAME
+}
+
+
+find_src_files()
+{
+	JAVA_FILES=`find src -name "*.java"`
+}
+
+
+add_jars()
+{
+	echo 'adding jar libraries to classpath'
+
+	CP=$CLASSPATH:
+
+	while read dep
+	do
+		if [ -n "$dep" ]
+		then
+			echo "adding  $dep"
+			
+			if [ ! -f "$dep" ]
+			then
+				echo "Error: dependency not found - $dep"
+				
+				exit 1
+			else
+				CP="$dep:$CP"
+			fi
+		fi
+	done < lib/dependencies.txt
+}
+
+
+extract_jars()
+{
+	echo 'Extracting jar libraries'
+
+	cd lib/class
+
+	while read dep
+	do
+		echo "Extracting  $dep"
+		
+		if [ ! -f "$dep" ]
+		then
+			echo "Error: dependency not found - $dep"
+
+			exit 1
+		else
+			jar xf $dep
+		fi
+	done < ../dependencies.txt
+
+	echo "Extracting $JAR_NAME"
+
+	jar xf ../../bin/$JAR_NAME
+
+	rm -rf META-INF
+
+	cd ../..
+}
+
+
+compile()
+{
+	clean_last
+
+	find_src_files
+
+	add_jars
+
+	tag
+
+	echo 'compiling source'
+
+	if javac $CARGS -d lib/class -classpath "$CP" $ARGS $JAVA_FILES
+	then
+		make_jar
+
+		exit 0
+	else
+		exit 1
+	fi
+}
+
+
+build()
+{
+	echo "Not implemented"
+	
+	exit 1
+}
+
+
+tag()
+{
+	echo 'tagging build'
+
+	if which jtag > /dev/null
+	then
+		jtag src/$PKG_DIR/$MAIN_CLASS.java
+	else
+		echo "jtag not installed... continuing"
+	fi
+}
+
+
+make_jar()
+{
+	echo 'creating executable jar file'
+
+	cp -rv resource/* lib/class/$PKG_DIR/
+	
+	cp -rv copyrights lib/class/$PKG_DIR/
+
+	cd lib/class
+
+	jar -cf ../../bin/$JAR_NAME *
+
+	cd ../../
+
+	jar -i bin/$JAR_NAME
+
+	ls -lh bin/$JAR_NAME
+}
+
+
+make_static_jar()
+{
+	echo "Not implemented"
+	
+	exit 1
+
+}
+
+
+doc()
+{
+	add_jars
+
+	echo "Generating Javadoc"
+
+	find_src_files
+
+	javadoc -classpath "$CP" -d javadoc $ARGS $JAVA_FILES
+
+	exit $?
+}
+
+
+
+install2()
+{
+	echo "Not implemented"
+	
+	exit 1
+}
+
+
+uninstall()
+{
+	echo "Not implemented"
+	
+	exit 1
+}
+
+
+release()
+{
+	echo "Not implemented"
+	
+	exit 1
+}
+
+
+branch()
+{
+	echo "Not implemented"
+	
+	exit 1
+}
+
+
+case "$ACTION" in
+	"compile")
+		compile
+	;;
+
+	"doc")
+		doc
+	;;
+
+	"clean")
+		clean
+	;;
+
+	*)
+		usage
+	;;
+esac
+
+exit 0
+

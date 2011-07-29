@@ -1,0 +1,713 @@
+package jsi3.util.sqldb;
+
+import java.util.*;
+import java.io.*;
+import java.sql.*;
+import java.util.Date;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.lang.reflect.*;
+
+import javax.naming.*;
+
+import static jsi3.lib.system.Statics.inspect;
+import static jsi3.lib.system.Statics.ex_to_string;
+import static jsi3.lib.text.Statics.sprintf;
+import static jsi3.lib.console.Statics.*;
+
+/**
+	This class implements database specific connection, query, insert and update methods
+*/
+public abstract class SqlDatabase
+{
+	Connection dbcon;
+
+	private String db_driver;
+
+	private final HashMap<String, PreparedStatement> statements = new HashMap<String, PreparedStatement>();
+
+
+	public static SqlDatabase db;
+
+
+	protected SqlDatabase( String db_driver )
+	{
+		this.db_driver = db_driver;
+
+		db = this;
+	}
+
+
+	public void use_driver( String db_driver )
+	{
+		this.db_driver = db_driver;
+	}
+
+
+	public abstract String format_db_url( String db_name );
+
+	public abstract String format_db_url( String hostname, String db_name );
+
+	public abstract String format_db_url( String hostname, Integer port, String db_name );
+
+
+	public void connect( String db_url, String db_userid, String db_passwd ) throws ClassNotFoundException, SQLException
+	{
+		Class.forName( db_driver );
+
+		dbcon = DriverManager.getConnection( db_url, db_userid, db_passwd );
+
+		statements.clear();
+	}
+
+
+	/*
+		Standard query
+	*/
+	public void print_execute_query( String query, Object... args ) throws SQLException
+	{
+		ResultSet rs = execute_query( query, args );
+
+		//cverbose.println( "Result:" );
+
+		while( rs.next() )
+		{
+			String res = rs.getString( 1 );
+
+			//cverbose.println( "\t" + res );
+		}
+	}
+
+
+	public ResultSet execute_query( String query_fmt, Object... args ) throws SQLException
+	{
+		String query = String.format( query_fmt, args );
+
+		Statement stmt = dbcon.createStatement();
+
+		cverbose.println( "Query: %s", query );
+
+		ResultSet rs = stmt.executeQuery( query );
+
+		//rs.next();
+
+		return rs;
+	}
+
+
+	/*
+		load rows of tables into objects
+	*/
+
+	public DBObject get_object( Class table ) throws InstantiationException, SQLException, IllegalAccessException
+	{
+		return get_object( table, null );
+	}
+
+
+	public DBObject get_object( DBObject dbo ) throws  SQLException, IllegalAccessException
+	{
+		return get_object( dbo, null );
+	}
+
+
+	public DBObject get_object( Class table, int id ) throws InstantiationException, SQLException, IllegalAccessException
+	{
+		return get_object( table, "id = ?", id );
+	}
+
+
+	public DBObject get_object( DBObject dbo, int id ) throws SQLException, IllegalAccessException
+	{
+		return get_object( dbo, "id = ?", id );
+	}
+
+
+	public DBObject get_object( Class table, String conditions_fmt, Object... args ) throws InstantiationException, SQLException, IllegalAccessException
+	{
+		Object o = table.newInstance();
+
+		if( ! ( o instanceof DBObject ) ) throw new IllegalArgumentException( "The class representing the table type must extend the DBObject class" );
+
+		DBObject dbo = (DBObject) o;
+
+		return get_object( dbo, conditions_fmt, args );
+	}
+
+
+	public DBObject get_object( DBObject dbo, String conditions_fmt, Object... args ) throws SQLException, IllegalAccessException
+	{
+		String get_query = sprintf( "SELECT * FROM \"%s\"", dbo.getClass().getSimpleName() );
+
+		if( conditions_fmt != null )
+		{
+			get_query += " WHERE " + conditions_fmt;
+		}
+
+		//cverbose.println( get_query );
+
+		PreparedStatement stmt = null;
+
+		ResultSet rs = null;
+
+		stmt = get_statement( get_query );
+
+		set_statement_params( stmt, args );
+
+		cverbose.println( stmt );
+
+		rs = stmt.executeQuery();
+
+		dbo._track_sets( false );
+
+		boolean found = SQLGhostObjectHandler.set_state( dbo, rs );
+
+		dbo._track_sets( true );
+
+		//cverbose.println( inspect( dbo ) );
+
+		if( found ) return dbo;
+		
+		return null;
+	}
+
+
+	public ArrayList<DBObject> get_objects( Class table ) throws InstantiationException, SQLException, IllegalAccessException
+	{
+		return get_objects( table, false, null );
+	}
+	
+	public ArrayList<DBObject> get_objects( Class table, boolean distinct ) throws InstantiationException, SQLException, IllegalAccessException
+	{
+		return get_objects( table, distinct, null );
+	}
+
+
+	public ArrayList<DBObject> get_objects( Class table, boolean distinct, String conditions_fmt, Object... args ) throws InstantiationException, SQLException, IllegalAccessException
+	{
+		ArrayList<DBObject> dbo_list = new ArrayList<DBObject>();
+		
+		DBObject dbo = null;
+
+		String get_query = null;
+
+		PreparedStatement stmt = null;
+
+		int n = 0;
+
+		ResultSet rs = null;
+
+		Object o = table.newInstance();
+
+		if( ! ( o instanceof DBObject ) ) throw new IllegalArgumentException( "The class representing the table type must extend the DBObject class" );
+
+		dbo = (DBObject) o;
+		
+		String distinct_str = "";
+		
+		if( distinct ) distinct_str = "DISTINCT";
+		
+		get_query = sprintf( "SELECT %s * FROM \"%s\"", distinct_str, dbo.getClass().getSimpleName() );
+
+		if( conditions_fmt != null )
+		{
+			get_query += " WHERE " + conditions_fmt;
+		}
+
+		stmt = get_statement( get_query );
+		
+		cverbose.println( stmt );
+		
+		set_statement_params( stmt, args );
+
+		cverbose.println( stmt );
+
+		rs = stmt.executeQuery();
+		
+		while( true )
+		{
+			if( dbo == null ) dbo = (DBObject) table.newInstance();
+			
+			dbo = (DBObject) table.newInstance();
+
+			dbo._track_sets( false );
+
+			if( ! SQLGhostObjectHandler.set_state( dbo, rs ) ) break;
+			
+			cverbose.println( inspect( dbo ) );
+
+			dbo._track_sets( true );
+			
+			dbo_list.add( dbo );
+			
+			dbo = null;
+		}
+
+		return dbo_list;
+	}
+
+
+	/**
+		Create a new table row from an object
+		@param o the object containing the data to insert
+	*/
+	public void insert_object( DBObject o ) throws SQLException
+	{
+		try
+		{
+			String sql = "INSERT INTO \"%s\" (%s) VALUES (%s);";
+
+			PreparedStatement stmt = null;
+
+			dbcon.setAutoCommit( false );
+
+			HashMap<String,Object> state = SQLGhostObjectHandler.get_state( o );
+
+			String col_names = "";
+
+			String val_qmarks = "";
+
+			ArrayList<Object> state_values = new ArrayList<Object>();
+
+			for( String key : state.keySet() )
+			{
+				Object value = state.get( key );
+
+				if( key.equals( "id" ) ) continue;
+
+				col_names += "\"" + key + "\",";
+
+				val_qmarks += "?,";
+
+				state_values.add( value );
+			}
+
+			if( col_names.endsWith( "," ) ) col_names = col_names.substring( 0, col_names.length() -1 );
+
+			if( val_qmarks.endsWith( "," ) ) val_qmarks = val_qmarks.substring( 0, val_qmarks.length() -1 );
+
+			sql = sprintf( sql, o.getClass().getSimpleName(), col_names, val_qmarks );
+
+			stmt = get_statement( sql );
+
+			int i = 0;
+
+			for( Object val : state_values )
+			{
+				i++;
+
+				stmt.setObject( i, val );
+			}
+
+			cverbose.println( stmt );
+
+			stmt.executeUpdate();
+
+			int id = sequence_value( o.getClass().getSimpleName() );
+
+			cverbose.println( "inserted row id=%d into table %s", id, o.getClass().getSimpleName() );
+
+			dbcon.commit();
+
+			o._track_sets( false );
+
+			o.setId( id );
+
+			o._track_sets( true );
+		}
+		finally
+		{
+			try
+			{
+				dbcon.setAutoCommit( true );
+			}
+			catch( Exception ex )
+			{
+			}
+		}
+	}
+
+
+	protected abstract ArrayList<String> list_table_names() throws SQLException;
+
+	protected abstract int sequence_value( String table_name ) throws SQLException;
+
+
+	/**
+	Update a table row from an object
+	@param o Object containing the database
+	@param fields names of the fields to update in the db table row [space separated]
+	*/
+	public void update_object( DBObject o, String fields ) throws SQLException
+	{
+		update_object( o, fields.split( "\\s+" ) );
+	}
+
+	/**
+	Update a table row from an object
+	@param o Object containing the database
+	@param fields names of the fields to update in the db table row
+	*/
+	public void update_object( DBObject o, String... fields ) throws SQLException
+	{
+		String sql = "UPDATE \"%s\" SET %s WHERE id=?;";
+
+		PreparedStatement stmt = null;
+
+		try
+		{
+			dbcon.setAutoCommit( false );
+
+			String sets = "";
+
+			for( String field : fields )
+			{
+				if( field.equals( "id" ) ) continue;
+				
+				sets += "\"" + field + "\"=?,";
+			}
+
+			if( sets.endsWith( "," ) ) sets = sets.substring( 0, sets.length() -1 );
+
+			sql = sprintf( sql, o.getClass().getSimpleName(), sets );
+
+			stmt = get_statement( sql );
+			
+			int i = 0;
+			
+			for( String field : fields )
+			{
+				if( field.equals( "id" ) ) continue;
+				
+				i++;
+				
+				Object value = SQLGhostObjectHandler.get( o, field );
+				
+				stmt.setObject( i, value );
+			}
+
+			i++;
+
+			stmt.setObject( i, o.getId() );
+
+			cverbose.println( stmt );
+
+			stmt.executeUpdate();
+
+			dbcon.commit();
+		}
+		finally
+		{
+			try
+			{
+				dbcon.setAutoCommit( true );
+			}
+			catch( Exception ex )
+			{
+			}
+		}
+	}
+
+
+	/*
+		Internal SQL Helpers
+	*/
+
+	PreparedStatement get_statement( String query ) throws SQLException
+	{
+		PreparedStatement stmt = statements.get( query );
+
+		if( stmt == null )
+		{
+			stmt = dbcon.prepareStatement( query );
+
+			statements.put( query, stmt );
+		}
+
+		stmt.clearParameters();
+		
+		return stmt;
+	}
+
+
+	void set_statement_params( PreparedStatement stmt, Object... args ) throws SQLException
+	{
+		stmt.clearParameters();
+		
+		for( int i=0; i<args.length; i++ )
+		{
+			cverbose.println( "statement param %d = %s", i+1, args[ i ] );
+			
+			stmt.setObject( i + 1, args[ i ] );
+		}
+	}
+}
+
+
+/*
+	Class to help with introspection
+*/
+class SQLGhostObjectHandler
+{
+	// cache fields associated with a class for (hopefully) quicker access
+
+
+	static final HashMap<Class, Field[]> members = new HashMap<Class, Field[]>();
+
+	static final HashMap<Class, Method[]> functions = new HashMap<Class, Method[]>();
+
+
+	static boolean set_state( DBObject o, ResultSet rs ) throws SQLException
+	{
+		if( ! rs.next() ) return false;
+		
+		ResultSetMetaData rsmd = rs.getMetaData();
+
+		for( int i=0; i<rsmd.getColumnCount(); i++ )
+		{
+			String field_name = rsmd.getColumnName( i + 1 );
+
+			try
+			{
+				Method setter = null;
+
+				for( Method m : get_methods( o ) )
+				{
+					if( m.getName().equals( "set_" + field_name ) )
+					{
+						setter = m;
+
+						break;
+					}
+				}
+
+				if( setter == null ) throw new NoSuchMethodException( "coudln't find set_" + field_name + " method in class " +  o.getClass().getName() );
+
+				Object data = rs.getObject( field_name );
+				
+				cverbose.println( "calling %s.%s( %s )", o.getClass().getName(), setter.getName(), data );
+
+				setter.invoke( o, data );
+			}
+			catch( NoSuchMethodException ex )
+			{
+				cerr.println( "no setter found for %s.%s", o.getClass().getName(), field_name );
+
+				cerr.println( ex_to_string( ex ) );
+
+				continue;
+			}
+			catch( IllegalAccessException ex )
+			{
+				cerr.println( "error calling setter for %s.%s", o.getClass().getName(), field_name );
+
+				cerr.println( ex_to_string( ex ) );
+
+				continue;
+			}
+			catch( InvocationTargetException ex )
+			{
+				cerr.println( "error calling setter for %s.%s", o.getClass().getName(), field_name );
+
+				cerr.println( ex_to_string( ex ) );
+
+				continue;
+			}
+		}
+
+		return true;
+	}
+
+	
+	static Object get( DBObject o, String field_name )
+	{
+		try
+		{
+			Method[] methods = get_methods( o );
+			
+			Method getter = null;
+
+			for( Method m : methods )
+			{
+				if( m.getName().equals( "get_" + field_name ) )
+				{
+					getter = m;
+
+					break;
+				}
+			}
+
+			if( getter == null ) throw new NoSuchMethodException( "coudln't find get_" + field_name + " method in class " +  o.getClass().getName() );
+
+			//cdebug.println( inspect( getter ) );
+
+			Object data = getter.invoke( o );
+			
+			return data;
+		}
+		catch( NoSuchMethodException ex )
+		{
+			cerr.println( "no getter found for %s.%s", o.getClass().getName(), field_name );
+
+			cerr.println( ex_to_string( ex ) );
+		}
+		catch( IllegalAccessException ex )
+		{
+			cerr.println( "error calling getter for %s.%s", o.getClass().getName(), field_name );
+
+			cerr.println( ex_to_string( ex ) );
+		}
+		catch( InvocationTargetException ex )
+		{
+			cerr.println( "error calling getter for %s.%s", o.getClass().getName(), field_name );
+
+			cerr.println( ex_to_string( ex ) );
+		}
+		
+		return null;
+	}
+	
+
+
+	static HashMap<String,Object> get_state( DBObject o )
+	{
+		Field[] fields = get_fields( o );
+		
+		Method[] methods = get_methods( o );
+
+		HashMap<String,Object> state = new HashMap<String,Object>();
+
+		for( Field field : fields )
+		{
+			if( Modifier.isStatic( field.getModifiers() ) ) continue;
+
+			String field_name = field.getName();
+
+			if( field_name.startsWith( "_" ) ) continue;
+
+			cverbose.println( "Field found: %s.%s", o.getClass().getName(), field.getName() );
+
+			try
+			{
+				Method getter = null;
+
+				for( Method m : methods )
+				{
+					if( m.getName().equals( "get_" + field_name ) )
+					{
+						getter = m;
+
+						break;
+					}
+				}
+
+				if( getter == null ) throw new NoSuchMethodException( "coudln't find get_" + field_name + " method in class " +  o.getClass().getName() );
+
+				//cdebug.println( inspect( getter ) );
+
+				Object data = getter.invoke( o );
+
+				state.put( field_name, data );
+			}
+			catch( NoSuchMethodException ex )
+			{
+				cerr.println( "no getter found for %s.%s", o.getClass().getName(), field_name );
+
+				cerr.println( ex_to_string( ex ) );
+
+				continue;
+			}
+			catch( IllegalAccessException ex )
+			{
+				cerr.println( "error calling getter for %s.%s", o.getClass().getName(), field_name );
+
+				cerr.println( ex_to_string( ex ) );
+
+				continue;
+			}
+			catch( InvocationTargetException ex )
+			{
+				cerr.println( "error calling getter for %s.%s", o.getClass().getName(), field_name );
+
+				cerr.println( ex_to_string( ex ) );
+
+				continue;
+			}
+		}
+
+		return state;
+	}
+
+
+	private static Method[] get_methods( DBObject o )
+	{
+		return get_methods( o.getClass() );
+	}
+
+
+	private static Method[] get_methods( Class c )
+	{
+		Method[] methods = functions.get( c );
+
+		// lazy initialisation of the methods arrays
+
+		if( methods == null )
+		{
+			methods = add_type_methods( c );
+		}
+
+		return methods;
+	}
+
+
+	private static Method[] add_type_methods( Class c )
+	{
+		//Method[] methods = c.getMethods();
+		
+		Method[] methods = c.getDeclaredMethods();
+		
+		for( Method method : methods ) cverbose.println( "Adding method: %s", method.getName() );
+
+		AccessibleObject.setAccessible( methods, true );
+
+		functions.put( c, methods );
+
+		return methods;
+	}
+
+
+
+	private static Field[] get_fields( DBObject o )
+	{
+		return get_fields( o.getClass() );
+	}
+
+
+	private static Field[] get_fields( Class c )
+	{
+		Field[] fields = members.get( c );
+
+		// lazy initialisation of the fields arrays
+
+		if( fields == null )
+		{
+			fields = add_type_fields( c );
+		}
+
+		return fields;
+	}
+
+
+	private static Field[] add_type_fields( Class c )
+	{
+		Field[] fields = c.getDeclaredFields();
+		
+		for( Field field : fields ) cverbose.println( "Adding field: %s", field.getName() );
+
+		AccessibleObject.setAccessible( fields, true );
+
+		members.put( c, fields );
+
+		return fields;
+	}
+}
