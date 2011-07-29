@@ -15,11 +15,25 @@ Organisation: None
 Created: Fri Jul 29 19:21:55 EST 2011
 
 
+dependencies:
+	junit-4.8.2.jar
+	jmdns.jar
+	servlet-api-2.5-6.1.3.jar
+	xmlrpc-2.0.1.jar
+	derby.jar
+	derbytools.jar
+	commons-io-2.0.jar
+
+put these in $HOME/lib/ or /usr/local/lib/ or Jsi3/lib/
+
+
+Building:
+
 jmake script options:
 
-Usage: ./jmake [mode] [optional-args]
+	Usage: ./jmake [mode] [optional-args]
 
-where modes include:
+where mode may be:
 
 compile
 	This will compile the source code and create the executable jar file
