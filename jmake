@@ -1,5 +1,15 @@
 #!/bin/sh
 
+################################################################################
+#
+# JProject2 (build 316) 'Makefile' for Jsi3
+#
+# JProject2 Author: Rod Harris
+#
+# Jsi3 Author: Rod Harris
+#
+################################################################################
+
 PROJECT="Jsi3"
 
 MAIN_CLASS="LibJsi3"
@@ -18,10 +28,12 @@ IDIR="$HOME"
 
 ILIB="$IDIR/lib"
 
+LIB_DIRS="../lib:$HOME/lib:/usr/local/lib"
+
 
 usage()
 {
-    echo "Usage: $0 {compile|doc|clean}"
+    echo "Usage: $0 {compile|doc|clean|branch|release}"
     exit 1
 }
 
@@ -67,56 +79,51 @@ find_src_files()
 
 add_jars()
 {
-	echo 'adding jar libraries to classpath'
-
-	CP=$CLASSPATH:
+	echo 'resolving dependencies'
 
 	while read dep
 	do
-		if [ -n "$dep" ]
-		then
-			echo "adding  $dep"
+		#echo $dep
+		
+		if [ -z $dep ]
+		then 
+			#echo "skipping blank line"
 			
-			if [ ! -f "$dep" ]
+			continue
+		fi
+		
+		found=0
+		
+		for lib_dir in $(echo $LIB_DIRS | tr ":" "\n")
+		do
+
+			jar_path=$lib_dir/$dep
+			
+			#echo "checking $jar_path"
+			
+			if [ -f "$jar_path" ]
 			then
-				echo "Error: dependency not found - $dep"
+				found=1
 				
-				exit 1
-			else
-				CP="$dep:$CP"
+				#echo "adding dependency: $jar_path"
+				
+				#CP=$CP:"$jar_path"
+				
+				CP=$CP:`readlink -f "$jar_path"`
+				
+				break
+			#else
+				#echo "skipping dependency: $jar_path"
 			fi
+		done
+		
+		if [ $found -eq 0 ]
+		then
+			echo "Couldn't locate dependency: $dep"
+			
+			exit 1
 		fi
 	done < lib/dependencies.txt
-}
-
-
-extract_jars()
-{
-	echo 'Extracting jar libraries'
-
-	cd lib/class
-
-	while read dep
-	do
-		echo "Extracting  $dep"
-		
-		if [ ! -f "$dep" ]
-		then
-			echo "Error: dependency not found - $dep"
-
-			exit 1
-		else
-			jar xf $dep
-		fi
-	done < ../dependencies.txt
-
-	echo "Extracting $JAR_NAME"
-
-	jar xf ../../bin/$JAR_NAME
-
-	rm -rf META-INF
-
-	cd ../..
 }
 
 
@@ -140,14 +147,6 @@ compile()
 	else
 		exit 1
 	fi
-}
-
-
-build()
-{
-	echo "Not implemented"
-	
-	exit 1
 }
 
 
@@ -184,15 +183,6 @@ make_jar()
 }
 
 
-make_static_jar()
-{
-	echo "Not implemented"
-	
-	exit 1
-
-}
-
-
 doc()
 {
 	add_jars
@@ -207,36 +197,69 @@ doc()
 }
 
 
-
-install2()
-{
-	echo "Not implemented"
-	
-	exit 1
-}
-
-
-uninstall()
-{
-	echo "Not implemented"
-	
-	exit 1
-}
-
-
 release()
 {
-	echo "Not implemented"
+	set -e
+
+	ls bin/$JAR_NAME > /dev/null
+
+	ver=`jtag src/$PKG_DIR/$MAIN_CLASS.java --vo`
+
+	mkdir -pv release/build-$ver/$PROJECT/
+
+	cp -v bin/$JAR_NAME release/build-$ver/$PROJECT/
+
+	cd release/build-$ver
+
+	#jar cvf $PROJECT-bin.jar $PROJECT
 	
-	exit 1
+	zip -r $PROJECT-bin $PROJECT
+
+	cd ../..
+
+	./jmake doc
+
+	mv javadoc $PROJECT-javadoc
+
+	jar cvf release/build-$ver/$PROJECT-javadoc.jar $PROJECT-javadoc
+
+	mv $PROJECT-javadoc javadoc
+
+	./jmake clean
+
+	mkdir -p /tmp/jproject2/
+
+	cp -r ../$PROJECT /tmp/jproject2/
+
+	rm -rf /tmp/jproject2/$PROJECT/release
+
+	rm -rf /tmp/jproject2/$PROJECT/branch
+
+	CWD=`pwd`
+
+	cd /tmp/jproject2
+
+	#jar cvf $CWD/release/build-$ver/$PROJECT-src.jar $PROJECT
+	
+	tar czvf $CWD/release/build-$ver/$PROJECT-src.tar.gz $PROJECT
+
+	rm -r $PROJECT
+
+	cd $CWD
 }
 
 
 branch()
 {
-	echo "Not implemented"
-	
-	exit 1
+	set -e
+
+	ver=`jtag src/$PKG_DIR/$MAIN_CLASS.java --vo`
+
+	mkdir -pv branch/src-$ver/
+
+	cp -rv src branch/src-$ver/
+
+	cp -rv resource branch/src-$ver/
 }
 
 
@@ -251,6 +274,14 @@ case "$ACTION" in
 
 	"clean")
 		clean
+	;;
+	
+	"release")
+		release
+	;;
+
+	"branch")
+		branch
 	;;
 
 	*)
